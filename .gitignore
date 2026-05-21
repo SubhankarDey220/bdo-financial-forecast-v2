@@ -2,7 +2,7 @@
 .DS_Store
 Thumbs.db
 
-*.pkl
+
 
 # Python virtual environment & cache
 __pycache__/
