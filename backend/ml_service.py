@@ -20,7 +20,7 @@ def get_company_info():
             row = company_info.loc[comp]
             companies.append({
                 "name": comp,
-                "symbol": comp, 
+                "symbol": comp,
                 "cap_type": row['Cap_Type'],
                 "sector": row['Sector']
             })
@@ -30,7 +30,6 @@ def get_company_info():
         return []
 
 def get_bdo_insights(company, sector, growth_pct):
-    # Sector specific details generator
     news_templates = {
         "Banking": [
             {"title": "BDO banking desk reports robust loan book expansion for retail segment", "source": "BDO Financial Services Research", "sentiment": "Positive"},
@@ -58,16 +57,15 @@ def get_bdo_insights(company, sector, growth_pct):
             {"title": "Input logistics costs and high dealership financing rates restrict heavy commercial vehicle growth", "source": "Business Standard", "sentiment": "Negative"}
         ]
     }
-    
-    # Fallback template for any other sector
+
     default_news = [
         {"title": f"BDO advisory sees strong growth signals in {sector} sector driven by domestic demand", "source": "BDO Research", "sentiment": "Positive"},
         {"title": "Commodity price correction expected to stabilize supply chain overheads", "source": "Business Standard", "sentiment": "Neutral"},
         {"title": "Export markets face headwinds due to global macroeconomic tightening", "source": "Mint", "sentiment": "Negative"}
     ]
-    
+
     news = news_templates.get(sector, default_news)
-    
+
     insights_templates = {
         "Banking": [
             "💡 Digital banking transformation driving lower cost-to-income ratio across urban branches.",
@@ -94,17 +92,16 @@ def get_bdo_insights(company, sector, growth_pct):
             "📈 Asset monetization strategies and low debt-equity ratios preserve cash reserves."
         ]
     }
-    
+
     default_insights = [
         f"💡 Capital allocation efficiency in the {sector} division is driving superior asset turnover ratios.",
         "📊 Cost optimization program successfully trimmed administrative SG&A by 150 basis points.",
         "🔒 Strong balance sheet position maintains high interest coverage, mitigating rising borrowing costs.",
         f"📈 Operational capacity expansion in key zones is perfectly timed to meet Q1/Q2 seasonal demands."
     ]
-    
+
     insights = insights_templates.get(sector, default_insights)
-    
-    # Dynamic risks based on growth sentiment
+
     base_risk = 35 if growth_pct > 5 else 48
     risks = [
         {"factor": "Macroeconomic Inflation & Interest Rates", "pct": round(base_risk + 5)},
@@ -112,7 +109,7 @@ def get_bdo_insights(company, sector, growth_pct):
         {"factor": "Geopolitical Export Headwinds", "pct": round(base_risk + 12)},
         {"factor": "Intense Domestic Sector Competition", "pct": round(base_risk + 2)}
     ]
-    
+
     return {
         "news": news,
         "insights": insights,
@@ -176,7 +173,12 @@ def predict_revenue(company_name, target_quarter, target_year):
     crude_sig = float(latest['Crude_oil_price'])  if sector in crude_sectors     else 0.0
     inf_sig   = float(latest['Inflation'])        if sector in inflation_sectors else 0.0
 
-    rev_lag1  = float(lag['Revenue_Lag1']         or 0)
+    # ── CRITICAL FIX: Use Target_Revenue for lag if available ──
+    if 'Target_Revenue' in lag.index and pd.notna(lag['Target_Revenue']):
+        rev_lag1 = float(lag['Target_Revenue'])
+    else:
+        rev_lag1 = float(lag['Revenue_Lag1'] or 0)
+
     prof_lag1 = float(lag['Profit_Lag1']          or 0)
     accel     = float(lag['Revenue_acceleration'] or 0)
     momentum  = float(lag['Price_momentum']       or 0)
@@ -213,52 +215,49 @@ def predict_revenue(company_name, target_quarter, target_year):
     X = np.array([[row[f] for f in FEATURES]])
     if scaler: X = scaler.transform(X)
 
-    pred      = float(model.predict(X)[0])
-    
+    pred = float(model.predict(X)[0])
+
     mape_used = global_mape
     if isinstance(company_errors, dict):
         mape_used = company_errors.get(company_name, global_mape)
     elif isinstance(company_errors, pd.Series):
         mape_used = company_errors.get(company_name, global_mape)
-        
-    lower     = pred * (1 - mape_used)
-    upper     = pred * (1 + mape_used)
+
+    lower = pred * (1 - mape_used)
+    upper = pred * (1 + mape_used)
 
     if rev_lag1 > 0:
         growth_percent = ((pred - rev_lag1) / rev_lag1) * 100
 
-    # CRITICAL BUG FIX: Extract actual revenues from 'Target_Revenue' column in full_data.pkl 
-    # instead of using the previous quarter's 'Revenue_Lag1' data.
-    # Filter out rows where Target_Revenue is NaN (prediction targets) for historical records.
-    comp_df_clean = comp_df.dropna(subset=['Target_Revenue'])
+    # ── CRITICAL FIX: Use Target_Revenue for historical chart ──
+    comp_df_clean  = comp_df.dropna(subset=['Target_Revenue'])
     sorted_comp_df = comp_df_clean.sort_values(['Year', 'Quarter_Type_Encoded']).tail(8)
-    
+
     historical = []
     for _, r in sorted_comp_df.iterrows():
-        q_str = f"{QUARTER_REV[r['Quarter_Type_Encoded']]} {int(r['Year'])}"
+        q_str   = f"{QUARTER_REV[r['Quarter_Type_Encoded']]} {int(r['Year'])}"
         rev_val = float(r['Target_Revenue'])
         historical.append({
             "quarter": q_str,
             "revenue": round(rev_val, 2)
         })
 
-    # Retrieve tailored advisory reports
     bdo_data = get_bdo_insights(company_name, sector, growth_percent)
 
     return {
-        "company": company_name,
-        "cap_type": cap_type,
-        "sector": sector,
-        "model_used": model_name,
+        "company"          : company_name,
+        "cap_type"         : cap_type,
+        "sector"           : sector,
+        "model_used"       : model_name,
         "prediction_quarter": f"{target_quarter.upper()} {target_year}",
         "predicted_revenue": round(pred, 2),
-        "growth_percent": round(growth_percent, 2),
-        "confidence_range": [round(lower, 2), round(upper, 2)],
-        "accuracy": round(mape_used * 100, 2),
-        "historical_data": historical,
-        "latest_news": bdo_data["news"],
+        "growth_percent"   : round(growth_percent, 2),
+        "confidence_range" : [round(lower, 2), round(upper, 2)],
+        "accuracy"         : round(mape_used * 100, 2),
+        "historical_data"  : historical,
+        "latest_news"      : bdo_data["news"],
         "business_insights": bdo_data["insights"],
-        "risk_assessment": bdo_data["risks"]
+        "risk_assessment"  : bdo_data["risks"]
     }
 
 def get_summary(quarter: str, year: int):
@@ -266,16 +265,16 @@ def get_summary(quarter: str, year: int):
         company_info = load_data('company_info.pkl')
     except Exception:
         return []
-        
+
     summary = []
     for comp in company_info.index:
         pred = predict_revenue(comp, quarter, year)
         if pred:
             summary.append({
-                "company": pred["company"],
-                "sector": pred["sector"],
-                "cap_type": pred["cap_type"],
+                "company"          : pred["company"],
+                "sector"           : pred["sector"],
+                "cap_type"         : pred["cap_type"],
                 "predicted_revenue": pred["predicted_revenue"],
-                "growth_percent": pred["growth_percent"]
+                "growth_percent"   : pred["growth_percent"]
             })
     return summary
