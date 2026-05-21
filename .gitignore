@@ -2,8 +2,6 @@
 .DS_Store
 Thumbs.db
 
-# Machine Learning models (Protected Binary Files)
-models/
 *.pkl
 
 # Python virtual environment & cache
