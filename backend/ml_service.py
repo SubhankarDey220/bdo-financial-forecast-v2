@@ -3,7 +3,7 @@ import os
 import joblib
 import numpy as np
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 QUARTER_MAP = {'Q1': 1, 'Q2': 2, 'Q3': 3, 'Q4': 4}
