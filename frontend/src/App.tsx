@@ -38,7 +38,7 @@ function App() {
 
   // Load companies list on mount
   useEffect(() => {
-    fetch('http://localhost:8000/api/companies')
+    fetch('https://bdo-financial-forecast-v2.onrender.com/api/companies')
       .then(res => {
         if (!res.ok) throw new Error('Failed to retrieve companies data');
         return res.json();
@@ -62,7 +62,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`http://localhost:8000/api/predict?company=${encodeURIComponent(selectedCompany)}&quarter=${selectedQuarter}&year=${selectedYear}`);
+      const res = await fetch(`https://bdo-financial-forecast-v2.onrender.com/api/predict?company=${encodeURIComponent(selectedCompany)}&quarter=${selectedQuarter}&year=${selectedYear}`);
       if (!res.ok) throw new Error("Forecast generation failed.");
       
       const data: PredictionResult = await res.json();
