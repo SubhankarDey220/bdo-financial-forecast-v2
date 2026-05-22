@@ -236,7 +236,7 @@ def predict_revenue(company_name, target_quarter, target_year):
     historical = []
     for _, r in sorted_comp_df.iterrows():
         q_str   = f"{QUARTER_REV[r['Quarter_Type_Encoded']]} {int(r['Year'])}"
-        rev_val = float(r['Target_Revenue'])
+        rev_val = float(r['Revenue_Lag1'] or 0)
         historical.append({
             "quarter": q_str,
             "revenue": round(rev_val, 2)
