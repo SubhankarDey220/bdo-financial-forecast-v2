@@ -125,7 +125,6 @@ def predict_revenue(company_name, target_quarter, target_year):
         print(f"Error loading models: {e}")
         return None
 
-    # Validate company
     if company_name not in company_info.index:
         close = [c for c in company_info.index if company_name.lower() in c.lower()]
         actual_name = close[0] if close else None
@@ -173,12 +172,8 @@ def predict_revenue(company_name, target_quarter, target_year):
     crude_sig = float(latest['Crude_oil_price'])  if sector in crude_sectors     else 0.0
     inf_sig   = float(latest['Inflation'])        if sector in inflation_sectors else 0.0
 
-    # ── CRITICAL FIX: Use Target_Revenue for lag if available ──
-    if 'Target_Revenue' in lag.index and pd.notna(lag['Target_Revenue']):
-        rev_lag1 = float(lag['Target_Revenue'])
-    else:
-        rev_lag1 = float(lag['Revenue_Lag1'] or 0)
-
+    # FIXED: Always use Revenue_Lag1 — never Target_Revenue
+    rev_lag1  = float(lag['Revenue_Lag1']         or 0)
     prof_lag1 = float(lag['Profit_Lag1']          or 0)
     accel     = float(lag['Revenue_acceleration'] or 0)
     momentum  = float(lag['Price_momentum']       or 0)
@@ -188,8 +183,9 @@ def predict_revenue(company_name, target_quarter, target_year):
     row = {
         'Cap_Type_Encoded'     : cap_enc,
         'Quarter_Type_Encoded' : tq_num,
-        'Company_TargetEncoded': company_mean.get(company_name, company_mean.mean()) if isinstance(company_mean, dict) else company_mean,
-        'Sector_TargetEncoded' : sector_mean.get(sector, sector_mean.mean()) if isinstance(sector_mean, dict) else sector_mean,
+        # FIXED: Always convert to float to avoid pandas Series issues
+        'Company_TargetEncoded': float(company_mean.get(company_name, company_mean.mean())),
+        'Sector_TargetEncoded' : float(sector_mean.get(sector, sector_mean.mean())),
         'is_Q4'                : 1 if tq_num == 4 else 0,
         'is_exceptional'       : 0,
         'USD_INR_signal'       : usd_sig,
@@ -206,11 +202,6 @@ def predict_revenue(company_name, target_quarter, target_year):
         'Accel_x_Cap'          : accel     * cap_enc,
         'Moment_x_Cap'         : momentum  * cap_enc,
     }
-
-    if isinstance(row['Company_TargetEncoded'], pd.Series):
-        row['Company_TargetEncoded'] = row['Company_TargetEncoded'].mean()
-    if isinstance(row['Sector_TargetEncoded'], pd.Series):
-        row['Sector_TargetEncoded'] = row['Sector_TargetEncoded'].mean()
 
     X = np.array([[row[f] for f in FEATURES]])
     if scaler: X = scaler.transform(X)
@@ -229,35 +220,37 @@ def predict_revenue(company_name, target_quarter, target_year):
     if rev_lag1 > 0:
         growth_percent = ((pred - rev_lag1) / rev_lag1) * 100
 
-    # ── CRITICAL FIX: Use Target_Revenue for historical chart ──
-    comp_df_clean  = comp_df.dropna(subset=['Target_Revenue'])
-    sorted_comp_df = comp_df_clean.sort_values(['Year', 'Quarter_Type_Encoded']).tail(8)
+    # FIXED: Use Revenue_Lag1 for historical chart
+    sorted_comp_df = comp_df.sort_values(['Year', 'Quarter_Type_Encoded']).tail(9)
 
     historical = []
     for _, r in sorted_comp_df.iterrows():
         q_str   = f"{QUARTER_REV[r['Quarter_Type_Encoded']]} {int(r['Year'])}"
         rev_val = float(r['Revenue_Lag1'] or 0)
-        historical.append({
-            "quarter": q_str,
-            "revenue": round(rev_val, 2)
-        })
+        if rev_val > 0:
+            historical.append({
+                "quarter": q_str,
+                "revenue": round(rev_val, 2)
+            })
+
+    historical = historical[-8:]
 
     bdo_data = get_bdo_insights(company_name, sector, growth_percent)
 
     return {
-        "company"          : company_name,
-        "cap_type"         : cap_type,
-        "sector"           : sector,
-        "model_used"       : model_name,
+        "company"           : company_name,
+        "cap_type"          : cap_type,
+        "sector"            : sector,
+        "model_used"        : model_name,
         "prediction_quarter": f"{target_quarter.upper()} {target_year}",
-        "predicted_revenue": round(pred, 2),
-        "growth_percent"   : round(growth_percent, 2),
-        "confidence_range" : [round(lower, 2), round(upper, 2)],
-        "accuracy"         : round(mape_used * 100, 2),
-        "historical_data"  : historical,
-        "latest_news"      : bdo_data["news"],
-        "business_insights": bdo_data["insights"],
-        "risk_assessment"  : bdo_data["risks"]
+        "predicted_revenue" : round(pred, 2),
+        "growth_percent"    : round(growth_percent, 2),
+        "confidence_range"  : [round(lower, 2), round(upper, 2)],
+        "accuracy"          : round(mape_used * 100, 2),
+        "historical_data"   : historical,
+        "latest_news"       : bdo_data["news"],
+        "business_insights" : bdo_data["insights"],
+        "risk_assessment"   : bdo_data["risks"]
     }
 
 def get_summary(quarter: str, year: int):
